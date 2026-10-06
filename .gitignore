@@ -11,6 +11,12 @@ __pycache__
 .vscode
 coverage.xml
 .ruff_cache
+.venv
+venv
+
+# logs
+logs/
+*.log
 
 
 # Home Assistant configuration
