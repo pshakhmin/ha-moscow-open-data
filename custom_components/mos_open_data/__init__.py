@@ -1,4 +1,5 @@
-"""Custom integration to integrate mos_open_data with Home Assistant.
+"""
+Custom integration to integrate mos_open_data with Home Assistant.
 
 For more details about this integration, please refer to
 https://developers.home-assistant.io/docs/creating_integration_index
@@ -9,13 +10,12 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
-from homeassistant.const import CONF_ADDRESS, Platform
+from homeassistant.const import Platform
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.loader import async_get_loaded_integration
 
 from .api import MosOpenDataApiClient
 from .const import (
-    ATTRIBUTION,
     CONF_ADDRESS,
     CONF_API_KEY,
     DOMAIN,

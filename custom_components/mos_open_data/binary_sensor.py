@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from homeassistant.components.binary_sensor import (
@@ -23,6 +23,11 @@ if TYPE_CHECKING:
 
     from .coordinator import MosOpenDataUpdateCoordinator
     from .data import MosOpenDataConfigEntry
+
+
+def _local_now() -> datetime:
+    """Return the current time as a timezone-aware local datetime."""
+    return datetime.now(tz=UTC).astimezone()
 
 
 ENTITY_DESCRIPTIONS: tuple[BinarySensorEntityDescription, ...] = (
@@ -97,7 +102,7 @@ class MosOpenDataBinarySensor(MosOpenDataEntity, BinarySensorEntity):
 
     def _is_heating_season(self) -> bool:
         """Check if it's currently the heating season."""
-        now = datetime.now()
+        now = _local_now()
         month = now.month
         day = now.day
 
@@ -106,14 +111,12 @@ class MosOpenDataBinarySensor(MosOpenDataEntity, BinarySensorEntity):
             return True
         if month in (1, 2, 3, 4):
             return True
-        if month == 5 and day <= HEATING_SEASON_END_DAY:
-            return True
-        return False
+        return month == HEATING_SEASON_END_MONTH and day <= HEATING_SEASON_END_DAY
 
     @staticmethod
     def _is_water_shutoff(records: list[dict]) -> bool:
         """Check if water is currently being shut off."""
-        now = datetime.now()
+        now = _local_now()
         for record in records:
             periods = record.get("Periods") or []
             if isinstance(periods, dict):
@@ -138,7 +141,6 @@ class MosOpenDataBinarySensor(MosOpenDataEntity, BinarySensorEntity):
             if not cells:
                 continue
             pdk_mr = cells.get("PDKmr_ASIL")
-            pdk_ss = cells.get("PDKss")
             if pdk_mr is not None and isinstance(pdk_mr, (int, float)) and pdk_mr > 0:
                 return True
         return False
@@ -147,11 +149,15 @@ class MosOpenDataBinarySensor(MosOpenDataEntity, BinarySensorEntity):
 def _parse_datetime(value: str | datetime) -> datetime | None:
     """Parse a datetime from string or return as-is."""
     if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=_local_now().tzinfo)
         return value
     if isinstance(value, str):
         for fmt in ("%d.%m.%Y %H:%M:%S", "%d.%m.%Y", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
             try:
-                return datetime.strptime(value, fmt)
+                return datetime.strptime(value, fmt).replace(
+                    tzinfo=_local_now().tzinfo,
+                )
             except ValueError:
                 continue
     return None

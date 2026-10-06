@@ -18,6 +18,19 @@ ignore = [
 [lint.flake8-pytest-style]
 fixture-parentheses = false
 
+[lint.per-file-ignores]
+"tests/**" = [
+    "ANN001",  # test functions/fixtures need no type annotations
+    "ARG001",  # fixture-provided args (e.g. enable_custom_integrations) are intentionally unused
+    "DTZ001",  # naive datetimes are used as fixed, deterministic test inputs
+    "EM101",  # string literals in raised test exceptions are fine
+    "FBT001",  # boolean parameters are expected in parametrized tests
+    "INP001",  # tests are not a package
+    "PLR2004", # magic values are expected in assertions
+    "S101",    # asserts are the point of tests
+    "SLF001",  # tests exercise private helpers
+]
+
 [lint.pyupgrade]
 keep-runtime-typing = true
 

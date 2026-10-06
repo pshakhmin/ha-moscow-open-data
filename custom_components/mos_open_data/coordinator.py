@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.exceptions import ConfigEntryAuthFailed
@@ -19,6 +20,11 @@ if TYPE_CHECKING:
     from .data import MosOpenDataConfigEntry
 
 _LOGGER = logging.getLogger(__package__)
+
+
+def _local_now() -> datetime:
+    """Return the current time as a timezone-aware local datetime."""
+    return datetime.now(tz=UTC).astimezone()
 
 
 class MosOpenDataUpdateCoordinator(DataUpdateCoordinator):
@@ -67,13 +73,6 @@ class MosOpenDataUpdateCoordinator(DataUpdateCoordinator):
                     DATASET_AIR_QUALITY,
                     exception,
                 )
-
-            return {
-                "hot_water_records": hot_water,
-                "air_quality_records": air_quality,
-                "current_date": None,
-                "address": address,
-            }
         except MosOpenDataApiClientAuthenticationError as exception:
             raise ConfigEntryAuthFailed(exception) from exception
         except MosOpenDataApiClientRateLimitError as exception:
@@ -83,3 +82,10 @@ class MosOpenDataUpdateCoordinator(DataUpdateCoordinator):
             ) from exception
         except MosOpenDataApiClientError as exception:
             raise UpdateFailed(exception) from exception
+        else:
+            return {
+                "hot_water_records": hot_water,
+                "air_quality_records": air_quality,
+                "current_date": _local_now(),
+                "address": address,
+            }

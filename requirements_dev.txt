@@ -1,3 +1,6 @@
 -r requirements_lint.txt
 colorlog==6.10.1
 homeassistant==2026.6.4
+# Test harness. 0.13.340 is the release that pins homeassistant==2026.6.4,
+# matching the pin above (it also pins pytest==9.0.3).
+pytest-homeassistant-custom-component==0.13.340

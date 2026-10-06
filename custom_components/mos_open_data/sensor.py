@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
+
 from .const import (
     HEATING_SEASON_END_DAY,
     HEATING_SEASON_END_MONTH,
@@ -20,6 +21,11 @@ if TYPE_CHECKING:
 
     from .coordinator import MosOpenDataUpdateCoordinator
     from .data import MosOpenDataConfigEntry
+
+
+def _local_now() -> datetime:
+    """Return the current time as a timezone-aware local datetime."""
+    return datetime.now(tz=UTC).astimezone()
 
 
 ENTITY_DESCRIPTIONS: tuple[SensorEntityDescription, ...] = (
@@ -89,26 +95,28 @@ class MosOpenDataSensor(MosOpenDataEntity, SensorEntity):
             return None
 
         key = self.entity_description.key
-
-        if key == "next_water_shutoff_date":
-            records = data.get("hot_water_records", [])
-            return self._get_next_shutoff_start(records)
-        if key == "next_water_shutoff_end":
-            records = data.get("hot_water_records", [])
-            return self._get_next_shutoff_end(records)
         if key == "heating_season_start":
             return self._get_heating_season_start()
         if key == "heating_season_end":
             return self._get_heating_season_end()
-        if key == "air_quality_parameters_count":
-            records = data.get("air_quality_records", [])
-            return str(len(records))
+        return self._get_record_value(data)
 
+    def _get_record_value(self, data: dict) -> str | None:
+        """Return the value derived from the fetched records."""
+        key = self.entity_description.key
+        hot_water = data.get("hot_water_records", [])
+        if key == "next_water_shutoff_date":
+            return self._get_next_shutoff_start(hot_water)
+        if key == "next_water_shutoff_end":
+            return self._get_next_shutoff_end(hot_water)
+        if key == "air_quality_parameters_count":
+            air_quality = data.get("air_quality_records", [])
+            return str(len(air_quality))
         return None
 
     def _get_next_shutoff_start(self, records: list[dict]) -> str | None:
         """Get the start date of the next water shutoff period."""
-        now = self.coordinator.data.get("current_date") or datetime.now()
+        now = self.coordinator.data.get("current_date") or _local_now()
         dates = self._extract_shutoff_dates(records, field="OutageBegin")
         future_dates = sorted(
             (d for d in dates if d.date() >= now.date()),
@@ -122,7 +130,7 @@ class MosOpenDataSensor(MosOpenDataEntity, SensorEntity):
 
     def _get_next_shutoff_end(self, records: list[dict]) -> str | None:
         """Get the end date of the next water shutoff period."""
-        now = self.coordinator.data.get("current_date") or datetime.now()
+        now = self.coordinator.data.get("current_date") or _local_now()
         dates = self._extract_shutoff_dates(records, field="OutageEnd")
         future_dates = sorted(
             (d for d in dates if d.date() >= now.date()),
@@ -136,18 +144,38 @@ class MosOpenDataSensor(MosOpenDataEntity, SensorEntity):
 
     def _get_heating_season_start(self) -> str | None:
         """Return heating season start date."""
-        now = datetime.now()
-        start = datetime(now.year, HEATING_SEASON_START_MONTH, HEATING_SEASON_START_DAY)
+        now = _local_now()
+        start = datetime(
+            now.year,
+            HEATING_SEASON_START_MONTH,
+            HEATING_SEASON_START_DAY,
+            tzinfo=now.tzinfo,
+        )
         if start <= now:
-            start = datetime(now.year + 1, HEATING_SEASON_START_MONTH, HEATING_SEASON_START_DAY)
+            start = datetime(
+                now.year + 1,
+                HEATING_SEASON_START_MONTH,
+                HEATING_SEASON_START_DAY,
+                tzinfo=now.tzinfo,
+            )
         return start.strftime("%d.%m.%Y")
 
     def _get_heating_season_end(self) -> str | None:
         """Return heating season end date."""
-        now = datetime.now()
-        end = datetime(now.year, HEATING_SEASON_END_MONTH, HEATING_SEASON_END_DAY)
+        now = _local_now()
+        end = datetime(
+            now.year,
+            HEATING_SEASON_END_MONTH,
+            HEATING_SEASON_END_DAY,
+            tzinfo=now.tzinfo,
+        )
         if end <= now:
-            end = datetime(now.year + 1, HEATING_SEASON_END_MONTH, HEATING_SEASON_END_DAY)
+            end = datetime(
+                now.year + 1,
+                HEATING_SEASON_END_MONTH,
+                HEATING_SEASON_END_DAY,
+                tzinfo=now.tzinfo,
+            )
         return end.strftime("%d.%m.%Y")
 
     @staticmethod
@@ -165,11 +193,24 @@ class MosOpenDataSensor(MosOpenDataEntity, SensorEntity):
                 value = period.get(field) if isinstance(period, dict) else None
                 if value:
                     if isinstance(value, datetime):
-                        dates.append(value)
+                        dates.append(
+                            value.replace(tzinfo=_local_now().tzinfo)
+                            if value.tzinfo is None
+                            else value,
+                        )
                     elif isinstance(value, str):
-                        for fmt in ("%d.%m.%Y %H:%M:%S", "%d.%m.%Y", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+                        for fmt in (
+                            "%d.%m.%Y %H:%M:%S",
+                            "%d.%m.%Y",
+                            "%Y-%m-%dT%H:%M:%S",
+                            "%Y-%m-%d",
+                        ):
                             try:
-                                dates.append(datetime.strptime(value, fmt))
+                                dates.append(
+                                    datetime.strptime(value, fmt).replace(
+                                        tzinfo=_local_now().tzinfo,
+                                    ),
+                                )
                                 break
                             except ValueError:
                                 continue

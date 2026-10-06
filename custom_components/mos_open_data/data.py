@@ -6,8 +6,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.loader import Integration
 

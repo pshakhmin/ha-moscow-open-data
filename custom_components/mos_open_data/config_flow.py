@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
-
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.const import CONF_ADDRESS
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.loader import async_get_loaded_integration
@@ -74,7 +71,10 @@ class MosOpenDataFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                             type=selector.TextSelectorType.TEXT,
                         ),
                     ),
-                    vol.Optional(CONF_API_KEY, default=(user_input or {}).get(CONF_API_KEY, "")): selector.TextSelector(
+                    vol.Optional(
+                        CONF_API_KEY,
+                        default=(user_input or {}).get(CONF_API_KEY, ""),
+                    ): selector.TextSelector(
                         selector.TextSelectorConfig(
                             type=selector.TextSelectorType.TEXT,
                         ),
@@ -90,8 +90,6 @@ class MosOpenDataFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         api_key: str | None,
     ) -> None:
         """Validate that we can reach the API."""
-        from .const import API_BASE_URL, DATASET_HOT_WATER
-
         session = async_get_clientsession(self.hass)
         client = MosOpenDataApiClient(session=session, api_key=api_key)
         await client.async_get_hot_water_schedule(address=address)
