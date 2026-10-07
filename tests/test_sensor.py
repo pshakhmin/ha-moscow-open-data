@@ -1,19 +1,16 @@
 """
-Unit tests for the date-selection logic on the mos_open_data sensor.
+Unit tests for the mos_open_data sensor helpers.
 
-The selection helpers are pure date math. ``current_date`` is injected through a
-tiny coordinator stub, and the module's ``_local_now`` helper is patched where a
-fixed "now" is needed, so every case is deterministic.
+The shutoff-date helpers are pure date math with an injected ``current_date``.
+The heating-season helpers read dates detected from the official RSS feed via
+the coordinator payload, so a small coordinator stub is used.
 """
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from types import SimpleNamespace
 
-import pytest
-
-from custom_components.mos_open_data import sensor as sensor_module
 from custom_components.mos_open_data.sensor import MosOpenDataSensor
 
 # ---------------------------------------------------------------------------
@@ -137,57 +134,38 @@ def test_next_end_returns_earliest_future_date() -> None:
 
 
 # ---------------------------------------------------------------------------
-# heating season start / end
+# heating season start / end (from detected RSS dates in the coordinator data)
 # ---------------------------------------------------------------------------
 
 
-def _heating_value(
-    monkeypatch: pytest.MonkeyPatch, moment: datetime, method_name: str
-) -> str | None:
-    """Evaluate a heating-season helper as if now were ``moment``."""
-    monkeypatch.setattr(sensor_module, "_local_now", lambda: moment)
-    method = getattr(MosOpenDataSensor, method_name)
-    return method(object())  # type: ignore[arg-type]
+def _season_value(data: dict, field: str) -> str | None:
+    """Evaluate a heating-season helper against a fake coordinator payload."""
+    stub = SimpleNamespace(coordinator=SimpleNamespace(data=data))
+    return MosOpenDataSensor._get_heating_season(stub, field)
 
 
-@pytest.mark.parametrize(
-    ("moment", "expected"),
-    [
-        (datetime(2024, 6, 15, tzinfo=UTC), "01.10.2024"),  # off-season -> next
-        (datetime(2024, 10, 1, tzinfo=UTC), "01.10.2024"),  # in season
-        (datetime(2024, 12, 31, tzinfo=UTC), "01.10.2024"),  # in season
-        (datetime(2025, 3, 1, tzinfo=UTC), "01.10.2024"),  # in season
-        (datetime(2026, 10, 8, tzinfo=UTC), "01.10.2026"),  # reported case
-    ],
-)
-def test_heating_season_start(
-    monkeypatch: pytest.MonkeyPatch, moment: datetime, expected: str
-) -> None:
-    """Start is the Oct 1 of the current or next heating season."""
-    assert _heating_value(monkeypatch, moment, "_get_heating_season_start") == expected
+def test_heating_season_dates_from_detected_data() -> None:
+    """Detected dates are formatted for display."""
+    data = {"heating_season": {"start": "2026-10-01", "end": "2027-05-15"}}
+    assert _season_value(data, "start") == "01.10.2026"
+    assert _season_value(data, "end") == "15.05.2027"
 
 
-@pytest.mark.parametrize(
-    ("moment", "expected"),
-    [
-        (datetime(2024, 6, 15, tzinfo=UTC), "15.05.2025"),  # off-season -> next
-        (datetime(2024, 5, 15, tzinfo=UTC), "15.05.2024"),  # last day of season
-        (datetime(2025, 3, 1, tzinfo=UTC), "15.05.2025"),  # in season
-        (datetime(2025, 6, 1, tzinfo=UTC), "15.05.2026"),  # off-season -> next
-        (datetime(2026, 10, 8, tzinfo=UTC), "15.05.2027"),  # reported case
-    ],
-)
-def test_heating_season_end(
-    monkeypatch: pytest.MonkeyPatch, moment: datetime, expected: str
-) -> None:
-    """End is the May 15 of the current or next heating season (after start)."""
-    assert _heating_value(monkeypatch, moment, "_get_heating_season_end") == expected
+def test_heating_season_unknown_when_not_announced() -> None:
+    """No detection yields None (Unknown) instead of a hardcoded date."""
+    data = {"heating_season": {"start": None, "end": None}}
+    assert _season_value(data, "start") is None
+    assert _season_value(data, "end") is None
 
 
-def test_heating_season_start_is_before_end(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Start and end describe the same season, so start is always before end."""
-    moment = datetime(2026, 10, 8, tzinfo=UTC)
-    start = _heating_value(monkeypatch, moment, "_get_heating_season_start")
-    end = _heating_value(monkeypatch, moment, "_get_heating_season_end")
-    assert start == "01.10.2026"
-    assert end == "15.05.2027"
+def test_heating_season_unknown_without_data() -> None:
+    """Absent hearing-season data yields None."""
+    assert _season_value({}, "start") is None
+    assert _season_value({}, "end") is None
+
+
+def test_heating_season_end_may_be_pending() -> None:
+    """A start announced without an end yet still shows the start."""
+    data = {"heating_season": {"start": "2026-10-01", "end": None}}
+    assert _season_value(data, "start") == "01.10.2026"
+    assert _season_value(data, "end") is None

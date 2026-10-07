@@ -9,6 +9,7 @@ not depend on the wall clock.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
@@ -79,34 +80,62 @@ def test_water_shutoff_unparseable_dates_is_false() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _is_heating_season (date-only logic, so callable without a coordinator)
+# _is_heating_season (reads the detected season dates from coordinator data)
 # ---------------------------------------------------------------------------
 
 
-def _heating_season_at(monkeypatch: pytest.MonkeyPatch, moment: datetime) -> bool:
-    """Evaluate _is_heating_season as if now were ``moment``."""
+def _heating_season_at(
+    monkeypatch: pytest.MonkeyPatch, data: dict, moment: datetime
+) -> bool:
+    """Evaluate _is_heating_season for a payload as if now were ``moment``."""
     monkeypatch.setattr(binary_sensor_module, "_local_now", lambda: moment)
-    return binary_sensor_module.MosOpenDataBinarySensor._is_heating_season(object())
+    stub = SimpleNamespace(coordinator=SimpleNamespace(data=data))
+    return binary_sensor_module.MosOpenDataBinarySensor._is_heating_season(stub)
+
+
+SEASON = {"heating_season": {"start": "2026-10-01", "end": "2027-05-15"}}
 
 
 @pytest.mark.parametrize(
     ("moment", "expected"),
     [
-        (datetime(2024, 10, 1, tzinfo=UTC), True),
-        (datetime(2024, 12, 15, tzinfo=UTC), True),
-        (datetime(2025, 1, 1, tzinfo=UTC), True),
-        (datetime(2025, 5, 14, tzinfo=UTC), True),
-        (datetime(2025, 5, 15, tzinfo=UTC), True),  # last day of season
-        (datetime(2025, 5, 16, tzinfo=UTC), False),
-        (datetime(2024, 9, 30, tzinfo=UTC), False),
-        (datetime(2024, 6, 15, tzinfo=UTC), False),
+        (datetime(2026, 10, 1, tzinfo=UTC), True),  # first day
+        (datetime(2026, 12, 15, tzinfo=UTC), True),
+        (datetime(2027, 1, 1, tzinfo=UTC), True),
+        (datetime(2027, 5, 15, tzinfo=UTC), True),  # last day
+        (datetime(2027, 5, 16, tzinfo=UTC), False),
+        (datetime(2026, 9, 30, tzinfo=UTC), False),
     ],
 )
 def test_is_heating_season(
     monkeypatch: pytest.MonkeyPatch, moment: datetime, expected: bool
 ) -> None:
-    """Heating season runs Oct 1 - May 15 inclusive."""
-    assert _heating_season_at(monkeypatch, moment) is expected
+    """The season is active between the detected start and end dates."""
+    assert _heating_season_at(monkeypatch, SEASON, moment) is expected
+
+
+def test_is_heating_season_pending_end_stays_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An announced start without an end means the season is still on."""
+    data = {"heating_season": {"start": "2026-10-01", "end": None}}
+    assert _heating_season_at(monkeypatch, data, datetime(2026, 12, 1, tzinfo=UTC))
+    assert not _heating_season_at(monkeypatch, data, datetime(2026, 9, 30, tzinfo=UTC))
+
+
+def test_is_heating_season_unknown_start_is_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without a detected start the state is unknown, reported as off."""
+    data = {"heating_season": {"start": None, "end": None}}
+    assert not _heating_season_at(monkeypatch, data, datetime(2027, 1, 1, tzinfo=UTC))
+
+
+def test_is_heating_season_missing_data_is_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Missing coordinator data is handled without crashing."""
+    assert not _heating_season_at(monkeypatch, {}, FIXED_NOW)
 
 
 def test_binary_sensor_device_classes() -> None:

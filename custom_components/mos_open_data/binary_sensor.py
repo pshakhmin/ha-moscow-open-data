@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
 from homeassistant.components.binary_sensor import (
@@ -11,10 +11,6 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntityDescription,
 )
 
-from .const import (
-    HEATING_SEASON_END_DAY,
-    HEATING_SEASON_END_MONTH,
-)
 from .entity import MosOpenDataEntity
 
 if TYPE_CHECKING:
@@ -92,17 +88,20 @@ class MosOpenDataBinarySensor(MosOpenDataEntity, BinarySensorEntity):
         return False
 
     def _is_heating_season(self) -> bool:
-        """Check if it's currently the heating season."""
-        now = _local_now()
-        month = now.month
-        day = now.day
+        """
+        Check whether the heating season is currently active.
 
-        # Heating season: Oct 1 - May 15 (spans year boundary)
-        if month in (10, 11, 12):
-            return True
-        if month in (1, 2, 3, 4):
-            return True
-        return month == HEATING_SEASON_END_MONTH and day <= HEATING_SEASON_END_DAY
+        Based on the dates detected from the official announcements. Without a
+        detected start the season state is unknown, so it reports off.
+        """
+        data = self.coordinator.data or {}
+        season = data.get("heating_season") or {}
+        start = _parse_iso_date(season.get("start"))
+        if start is None:
+            return False
+        end = _parse_iso_date(season.get("end"))
+        today = _local_now().date()
+        return today >= start and (end is None or today <= end)
 
     @staticmethod
     def _is_water_shutoff(records: list[dict]) -> bool:
@@ -123,6 +122,16 @@ class MosOpenDataBinarySensor(MosOpenDataEntity, BinarySensorEntity):
                     if begin and end and begin <= now <= end:
                         return True
         return False
+
+
+def _parse_iso_date(value: str | None) -> date | None:
+    """Parse an ISO date string, returning None when absent or invalid."""
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 def _parse_datetime(value: str | datetime) -> datetime | None:

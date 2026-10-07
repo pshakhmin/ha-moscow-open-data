@@ -2,17 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
 from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
 
-from .const import (
-    HEATING_SEASON_END_DAY,
-    HEATING_SEASON_END_MONTH,
-    HEATING_SEASON_START_DAY,
-    HEATING_SEASON_START_MONTH,
-)
 from .entity import MosOpenDataEntity
 
 if TYPE_CHECKING:
@@ -26,38 +20,6 @@ if TYPE_CHECKING:
 def _local_now() -> datetime:
     """Return the current time as a timezone-aware local datetime."""
     return datetime.now(tz=UTC).astimezone()
-
-
-def heating_season_window(now: datetime) -> tuple[datetime, datetime]:
-    """Return the (start, end) of the current or next heating season."""
-    # The season runs Oct 1 - May 15 and crosses the year boundary, so start
-    # and end must be derived together to stay consistent.
-    in_season = (
-        now.month in (10, 11, 12)
-        or now.month in (1, 2, 3, 4)
-        or (now.month == HEATING_SEASON_END_MONTH and now.day <= HEATING_SEASON_END_DAY)
-    )
-    if in_season:
-        start_year = (
-            now.year if now.month >= HEATING_SEASON_START_MONTH else now.year - 1
-        )
-    else:
-        # Off-season: the next season starts this year.
-        start_year = now.year
-
-    start = datetime(
-        start_year,
-        HEATING_SEASON_START_MONTH,
-        HEATING_SEASON_START_DAY,
-        tzinfo=now.tzinfo,
-    )
-    end = datetime(
-        start_year + 1,
-        HEATING_SEASON_END_MONTH,
-        HEATING_SEASON_END_DAY,
-        tzinfo=now.tzinfo,
-    )
-    return start, end
 
 
 ENTITY_DESCRIPTIONS: tuple[SensorEntityDescription, ...] = (
@@ -123,9 +85,9 @@ class MosOpenDataSensor(MosOpenDataEntity, SensorEntity):
 
         key = self.entity_description.key
         if key == "heating_season_start":
-            return self._get_heating_season_start()
+            return self._get_heating_season("start")
         if key == "heating_season_end":
-            return self._get_heating_season_end()
+            return self._get_heating_season("end")
         return self._get_record_value(data)
 
     def _get_record_value(self, data: dict) -> str | None:
@@ -166,15 +128,17 @@ class MosOpenDataSensor(MosOpenDataEntity, SensorEntity):
             return dates[-1].strftime("%d.%m.%Y")
         return None
 
-    def _get_heating_season_start(self) -> str | None:
-        """Return the start date of the current or next heating season."""
-        start, _ = heating_season_window(_local_now())
-        return start.strftime("%d.%m.%Y")
-
-    def _get_heating_season_end(self) -> str | None:
-        """Return the end date of the current or next heating season."""
-        _, end = heating_season_window(_local_now())
-        return end.strftime("%d.%m.%Y")
+    def _get_heating_season(self, field: str) -> str | None:
+        """Return a detected heating-season date, or None when not announced."""
+        data = self.coordinator.data or {}
+        season = data.get("heating_season") or {}
+        raw = season.get(field)
+        if not raw:
+            return None
+        try:
+            return date.fromisoformat(raw).strftime("%d.%m.%Y")
+        except ValueError:
+            return None
 
     @staticmethod
     def _extract_shutoff_dates(
