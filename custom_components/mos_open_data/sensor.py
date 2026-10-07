@@ -28,6 +28,38 @@ def _local_now() -> datetime:
     return datetime.now(tz=UTC).astimezone()
 
 
+def heating_season_window(now: datetime) -> tuple[datetime, datetime]:
+    """Return the (start, end) of the current or next heating season."""
+    # The season runs Oct 1 - May 15 and crosses the year boundary, so start
+    # and end must be derived together to stay consistent.
+    in_season = (
+        now.month in (10, 11, 12)
+        or now.month in (1, 2, 3, 4)
+        or (now.month == HEATING_SEASON_END_MONTH and now.day <= HEATING_SEASON_END_DAY)
+    )
+    if in_season:
+        start_year = (
+            now.year if now.month >= HEATING_SEASON_START_MONTH else now.year - 1
+        )
+    else:
+        # Off-season: the next season starts this year.
+        start_year = now.year
+
+    start = datetime(
+        start_year,
+        HEATING_SEASON_START_MONTH,
+        HEATING_SEASON_START_DAY,
+        tzinfo=now.tzinfo,
+    )
+    end = datetime(
+        start_year + 1,
+        HEATING_SEASON_END_MONTH,
+        HEATING_SEASON_END_DAY,
+        tzinfo=now.tzinfo,
+    )
+    return start, end
+
+
 ENTITY_DESCRIPTIONS: tuple[SensorEntityDescription, ...] = (
     SensorEntityDescription(
         key="next_water_shutoff_date",
@@ -135,39 +167,13 @@ class MosOpenDataSensor(MosOpenDataEntity, SensorEntity):
         return None
 
     def _get_heating_season_start(self) -> str | None:
-        """Return heating season start date."""
-        now = _local_now()
-        start = datetime(
-            now.year,
-            HEATING_SEASON_START_MONTH,
-            HEATING_SEASON_START_DAY,
-            tzinfo=now.tzinfo,
-        )
-        if start <= now:
-            start = datetime(
-                now.year + 1,
-                HEATING_SEASON_START_MONTH,
-                HEATING_SEASON_START_DAY,
-                tzinfo=now.tzinfo,
-            )
+        """Return the start date of the current or next heating season."""
+        start, _ = heating_season_window(_local_now())
         return start.strftime("%d.%m.%Y")
 
     def _get_heating_season_end(self) -> str | None:
-        """Return heating season end date."""
-        now = _local_now()
-        end = datetime(
-            now.year,
-            HEATING_SEASON_END_MONTH,
-            HEATING_SEASON_END_DAY,
-            tzinfo=now.tzinfo,
-        )
-        if end <= now:
-            end = datetime(
-                now.year + 1,
-                HEATING_SEASON_END_MONTH,
-                HEATING_SEASON_END_DAY,
-                tzinfo=now.tzinfo,
-            )
+        """Return the end date of the current or next heating season."""
+        _, end = heating_season_window(_local_now())
         return end.strftime("%d.%m.%Y")
 
     @staticmethod

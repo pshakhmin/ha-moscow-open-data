@@ -34,13 +34,12 @@ ENTITY_DESCRIPTIONS: tuple[BinarySensorEntityDescription, ...] = (
     BinarySensorEntityDescription(
         key="heating_season",
         name="Отопительный сезон активен",
-        device_class=BinarySensorDeviceClass.HEAT,
         icon="mdi:radiator",
     ),
     BinarySensorEntityDescription(
         key="water_shutoff",
         name="Горячая вода отключена",
-        device_class=BinarySensorDeviceClass.RUNNING,
+        device_class=BinarySensorDeviceClass.PROBLEM,
         icon="mdi:water-off",
     ),
 )

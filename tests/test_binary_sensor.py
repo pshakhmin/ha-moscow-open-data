@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 
 from custom_components.mos_open_data import binary_sensor as binary_sensor_module
 
@@ -106,3 +107,10 @@ def test_is_heating_season(
 ) -> None:
     """Heating season runs Oct 1 - May 15 inclusive."""
     assert _heating_season_at(monkeypatch, moment) is expected
+
+
+def test_binary_sensor_device_classes() -> None:
+    """Device classes give clear labels instead of misleading ones."""
+    by_key = {d.key: d for d in binary_sensor_module.ENTITY_DESCRIPTIONS}
+    assert by_key["water_shutoff"].device_class is BinarySensorDeviceClass.PROBLEM
+    assert by_key["heating_season"].device_class is None

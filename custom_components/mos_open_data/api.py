@@ -112,10 +112,10 @@ def build_address_filter(address: str | None) -> str | None:
         if not token or token.casefold() in _STOPWORDS:
             continue
         escaped = token.replace("'", "''")
-        if token[0].isdigit():
-            clauses.append(f"Address eq '{escaped}'")
-        else:
-            clauses.append(f"substringof('{escaped}',Address)")
+        # The API's `Address eq` is case-insensitive and behaves as a contains
+        # match, while `substringof` is case-sensitive and silently returned no
+        # rows for differently-cased input. Use `eq` for every token.
+        clauses.append(f"Address eq '{escaped}'")
 
     if not clauses:
         return None

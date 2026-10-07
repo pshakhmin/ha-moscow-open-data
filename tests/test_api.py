@@ -57,31 +57,45 @@ def test_build_filter_only_stopwords_returns_none() -> None:
 
 
 def test_build_filter_token_strategy() -> None:
-    """Non-numeric tokens become substring matches, digits exact house matches."""
+    """Every token becomes a case-insensitive ``Address eq`` clause."""
     assert build_address_filter("ул. Тверская, д. 10") == (
-        "substringof('Тверская',Address) and Address eq '10'"
+        "Address eq 'Тверская' and Address eq '10'"
     )
 
 
 def test_build_filter_multiple_tokens() -> None:
     """Generic words are dropped while street and house are kept."""
     assert build_address_filter("Москва, улица Ленина, дом 1") == (
-        "substringof('Ленина',Address) and Address eq '1'"
+        "Address eq 'Ленина' and Address eq '1'"
     )
 
 
 def test_build_filter_preserves_house_fractions() -> None:
     """House numbers with a slash stay intact as a single token."""
     assert build_address_filter("Тверская 10/1") == (
-        "substringof('Тверская',Address) and Address eq '10/1'"
+        "Address eq 'Тверская' and Address eq '10/1'"
     )
 
 
 def test_build_filter_escapes_single_quotes() -> None:
     """OData escapes single quotes by doubling them."""
     assert build_address_filter("ул. O'Brien, д. 10") == (
-        "substringof('O''Brien',Address) and Address eq '10'"
+        "Address eq 'O''Brien' and Address eq '10'"
     )
+
+
+def test_build_filter_is_not_case_sensitive() -> None:
+    """Lower-case input is kept verbatim; the API matches it case-insensitively."""
+    assert build_address_filter("тверская улица, дом 10") == (
+        "Address eq 'тверская' and Address eq '10'"
+    )
+
+
+def test_build_filter_never_uses_substringof() -> None:
+    """The case-sensitive ``substringof`` operator must not be emitted."""
+    result = build_address_filter("Тверская улица, дом 19")
+    assert result is not None
+    assert "substringof" not in result
 
 
 # ---------------------------------------------------------------------------

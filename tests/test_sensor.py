@@ -153,30 +153,41 @@ def _heating_value(
 @pytest.mark.parametrize(
     ("moment", "expected"),
     [
-        (datetime(2024, 6, 15, tzinfo=UTC), "01.10.2024"),
-        (datetime(2024, 10, 1, tzinfo=UTC), "01.10.2025"),  # reached -> next year
-        (datetime(2024, 12, 31, tzinfo=UTC), "01.10.2025"),
-        (datetime(2025, 3, 1, tzinfo=UTC), "01.10.2025"),
+        (datetime(2024, 6, 15, tzinfo=UTC), "01.10.2024"),  # off-season -> next
+        (datetime(2024, 10, 1, tzinfo=UTC), "01.10.2024"),  # in season
+        (datetime(2024, 12, 31, tzinfo=UTC), "01.10.2024"),  # in season
+        (datetime(2025, 3, 1, tzinfo=UTC), "01.10.2024"),  # in season
+        (datetime(2026, 10, 8, tzinfo=UTC), "01.10.2026"),  # reported case
     ],
 )
 def test_heating_season_start(
     monkeypatch: pytest.MonkeyPatch, moment: datetime, expected: str
 ) -> None:
-    """Start is always the next Oct 1 (strictly after now)."""
+    """Start is the Oct 1 of the current or next heating season."""
     assert _heating_value(monkeypatch, moment, "_get_heating_season_start") == expected
 
 
 @pytest.mark.parametrize(
     ("moment", "expected"),
     [
-        (datetime(2024, 6, 15, tzinfo=UTC), "15.05.2025"),
-        (datetime(2024, 5, 15, tzinfo=UTC), "15.05.2025"),  # reached -> next year
-        (datetime(2025, 3, 1, tzinfo=UTC), "15.05.2025"),
-        (datetime(2025, 6, 1, tzinfo=UTC), "15.05.2026"),
+        (datetime(2024, 6, 15, tzinfo=UTC), "15.05.2025"),  # off-season -> next
+        (datetime(2024, 5, 15, tzinfo=UTC), "15.05.2024"),  # last day of season
+        (datetime(2025, 3, 1, tzinfo=UTC), "15.05.2025"),  # in season
+        (datetime(2025, 6, 1, tzinfo=UTC), "15.05.2026"),  # off-season -> next
+        (datetime(2026, 10, 8, tzinfo=UTC), "15.05.2027"),  # reported case
     ],
 )
 def test_heating_season_end(
     monkeypatch: pytest.MonkeyPatch, moment: datetime, expected: str
 ) -> None:
-    """End is always the next May 15 (strictly after now)."""
+    """End is the May 15 of the current or next heating season (after start)."""
     assert _heating_value(monkeypatch, moment, "_get_heating_season_end") == expected
+
+
+def test_heating_season_start_is_before_end(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Start and end describe the same season, so start is always before end."""
+    moment = datetime(2026, 10, 8, tzinfo=UTC)
+    start = _heating_value(monkeypatch, moment, "_get_heating_season_start")
+    end = _heating_value(monkeypatch, moment, "_get_heating_season_end")
+    assert start == "01.10.2026"
+    assert end == "15.05.2027"
