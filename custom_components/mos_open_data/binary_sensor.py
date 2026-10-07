@@ -43,12 +43,6 @@ ENTITY_DESCRIPTIONS: tuple[BinarySensorEntityDescription, ...] = (
         device_class=BinarySensorDeviceClass.RUNNING,
         icon="mdi:water-off",
     ),
-    BinarySensorEntityDescription(
-        key="air_quality_alert",
-        name="Превышение ПДК загрязнения воздуха",
-        device_class=BinarySensorDeviceClass.PROBLEM,
-        icon="mdi:alert-circle",
-    ),
 )
 
 
@@ -95,8 +89,6 @@ class MosOpenDataBinarySensor(MosOpenDataEntity, BinarySensorEntity):
             return self._is_heating_season()
         if key == "water_shutoff":
             return self._is_water_shutoff(data.get("hot_water_records", []))
-        if key == "air_quality_alert":
-            return self._has_air_quality_exceedance(data.get("air_quality_records", []))
 
         return False
 
@@ -131,18 +123,6 @@ class MosOpenDataBinarySensor(MosOpenDataEntity, BinarySensorEntity):
                     end = _parse_datetime(outage_end)
                     if begin and end and begin <= now <= end:
                         return True
-        return False
-
-    @staticmethod
-    def _has_air_quality_exceedance(records: list[dict]) -> bool:
-        """Check if any air quality parameter exceeds PDKss safe level."""
-        for record in records:
-            cells = record.get("Cells") if isinstance(record, dict) else None
-            if not cells:
-                continue
-            pdk_mr = cells.get("PDKmr_ASIL")
-            if pdk_mr is not None and isinstance(pdk_mr, (int, float)) and pdk_mr > 0:
-                return True
         return False
 
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -14,12 +13,9 @@ from .api import (
     MosOpenDataApiClientError,
     MosOpenDataApiClientRateLimitError,
 )
-from .const import DATASET_AIR_QUALITY, DATASET_HOT_WATER
 
 if TYPE_CHECKING:
     from .data import MosOpenDataConfigEntry
-
-_LOGGER = logging.getLogger(__package__)
 
 
 def _local_now() -> datetime:
@@ -38,41 +34,7 @@ class MosOpenDataUpdateCoordinator(DataUpdateCoordinator):
             address = self.config_entry.data.get("address", "")
             client = self.config_entry.runtime_data.client
 
-            # Fetch both datasets independently so one failure doesn't block the other
-            hot_water: list[dict] = []
-            air_quality: list[dict] = []
-
-            try:
-                hot_water = await client.async_get_hot_water_schedule(address=address)
-            except MosOpenDataApiClientAuthenticationError as exception:
-                raise ConfigEntryAuthFailed(exception) from exception
-            except MosOpenDataApiClientRateLimitError as exception:
-                raise UpdateFailed(
-                    exception,
-                    retry_after=exception.retry_after,
-                ) from exception
-            except MosOpenDataApiClientError as exception:
-                _LOGGER.warning(
-                    "Failed to fetch hot water schedule (dataset %s): %s",
-                    DATASET_HOT_WATER,
-                    exception,
-                )
-
-            try:
-                air_quality = await client.async_get_air_quality(address=address)
-            except MosOpenDataApiClientAuthenticationError as exception:
-                raise ConfigEntryAuthFailed(exception) from exception
-            except MosOpenDataApiClientRateLimitError as exception:
-                raise UpdateFailed(
-                    exception,
-                    retry_after=exception.retry_after,
-                ) from exception
-            except MosOpenDataApiClientError as exception:
-                _LOGGER.warning(
-                    "Failed to fetch air quality data (dataset %s): %s",
-                    DATASET_AIR_QUALITY,
-                    exception,
-                )
+            hot_water = await client.async_get_hot_water_schedule(address=address)
         except MosOpenDataApiClientAuthenticationError as exception:
             raise ConfigEntryAuthFailed(exception) from exception
         except MosOpenDataApiClientRateLimitError as exception:
@@ -85,7 +47,6 @@ class MosOpenDataUpdateCoordinator(DataUpdateCoordinator):
         else:
             return {
                 "hot_water_records": hot_water,
-                "air_quality_records": air_quality,
                 "current_date": _local_now(),
                 "address": address,
             }

@@ -16,9 +16,10 @@ import pytest
 from custom_components.mos_open_data.api import (
     MosOpenDataApiClientAuthenticationError,
     MosOpenDataApiClientRateLimitError,
-    _build_filter,
     _parse_retry_after,
+    _unwrap_cells,
     _verify_response_or_raise,
+    build_address_filter,
 )
 
 
@@ -40,24 +41,75 @@ class _FakeResponse:
 
 
 # ---------------------------------------------------------------------------
-# _build_filter
+# build_address_filter
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("address", [None, ""])
+@pytest.mark.parametrize("address", [None, "", "   "])
 def test_build_filter_empty_address_returns_none(address: str | None) -> None:
     """No address means no OData filter."""
-    assert _build_filter(address) is None
+    assert build_address_filter(address) is None
 
 
-def test_build_filter_produces_odata_equality() -> None:
-    """A normal address becomes an OData equality filter."""
-    assert _build_filter("ул. Тверская, 1") == "Address eq 'ул. Тверская, 1'"
+def test_build_filter_only_stopwords_returns_none() -> None:
+    """An address made only of generic words yields no filter."""
+    assert build_address_filter("Москва, улица, дом") is None
+
+
+def test_build_filter_token_strategy() -> None:
+    """Non-numeric tokens become substring matches, digits exact house matches."""
+    assert build_address_filter("ул. Тверская, д. 10") == (
+        "substringof('Тверская',Address) and Address eq '10'"
+    )
+
+
+def test_build_filter_multiple_tokens() -> None:
+    """Generic words are dropped while street and house are kept."""
+    assert build_address_filter("Москва, улица Ленина, дом 1") == (
+        "substringof('Ленина',Address) and Address eq '1'"
+    )
+
+
+def test_build_filter_preserves_house_fractions() -> None:
+    """House numbers with a slash stay intact as a single token."""
+    assert build_address_filter("Тверская 10/1") == (
+        "substringof('Тверская',Address) and Address eq '10/1'"
+    )
 
 
 def test_build_filter_escapes_single_quotes() -> None:
     """OData escapes single quotes by doubling them."""
-    assert _build_filter("O'Brien St.") == "Address eq 'O''Brien St.'"
+    assert build_address_filter("ул. O'Brien, д. 10") == (
+        "substringof('O''Brien',Address) and Address eq '10'"
+    )
+
+
+# ---------------------------------------------------------------------------
+# _unwrap_cells
+# ---------------------------------------------------------------------------
+
+
+def test_unwrap_cells_returns_cells_payload() -> None:
+    """A Cells-wrapped row is replaced by its Cells payload."""
+    rows = [{"global_id": 1, "Cells": {"Address": "ул. Тверская, 10"}}]
+    assert _unwrap_cells(rows) == [{"Address": "ул. Тверская, 10"}]
+
+
+def test_unwrap_cells_leaves_plain_dict_unchanged() -> None:
+    """A row without a Cells dict is returned as-is."""
+    row = {"Address": "ул. Тверская, 10"}
+    assert _unwrap_cells([row]) == [row]
+
+
+def test_unwrap_cells_non_dict_cells() -> None:
+    """A non-dict Cells value leaves the row unchanged."""
+    row = {"Cells": "not-a-dict"}
+    assert _unwrap_cells([row]) == [row]
+
+
+def test_unwrap_cells_non_dict_row() -> None:
+    """Non-dict rows are passed through unchanged."""
+    assert _unwrap_cells(["not-a-row"]) == ["not-a-row"]
 
 
 # ---------------------------------------------------------------------------

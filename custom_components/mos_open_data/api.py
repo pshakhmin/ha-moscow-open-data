@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import math
+import re
 import socket
 from contextlib import suppress
 from http import HTTPStatus
@@ -11,7 +12,39 @@ from typing import Any
 
 import aiohttp
 
-from .const import API_BASE_URL, DATASET_AIR_QUALITY, DATASET_HOT_WATER
+from .const import API_BASE_URL, DATASET_HOT_WATER
+
+_TOKEN_SPLIT_RE = re.compile(r"[\s,.]+")
+
+_STOPWORDS = frozenset(
+    {
+        "москва",
+        "город",
+        "ул",
+        "улица",
+        "д",
+        "дом",
+        "корпус",
+        "к",
+        "строение",
+        "стр",
+        "кв",
+        "квартира",
+        "проспект",
+        "пр",
+        "переулок",
+        "пер",
+        "шоссе",
+        "бульвар",
+        "проезд",
+        "набережная",
+        "наб",
+        "площадь",
+        "пл",
+        "аллея",
+        "тупик",
+    }
+)
 
 
 class MosOpenDataApiClientError(Exception):
@@ -69,12 +102,35 @@ def _verify_response_or_raise(response: aiohttp.ClientResponse) -> None:
     response.raise_for_status()
 
 
-def _build_filter(address: str | None) -> str | None:
-    """Build OData filter string from address."""
+def build_address_filter(address: str | None) -> str | None:
+    """Build an OData filter from an address using token matching."""
     if not address:
         return None
-    escaped = address.replace("'", "''")
-    return f"Address eq '{escaped}'"
+
+    clauses: list[str] = []
+    for token in _TOKEN_SPLIT_RE.split(address):
+        if not token or token.casefold() in _STOPWORDS:
+            continue
+        escaped = token.replace("'", "''")
+        if token[0].isdigit():
+            clauses.append(f"Address eq '{escaped}'")
+        else:
+            clauses.append(f"substringof('{escaped}',Address)")
+
+    if not clauses:
+        return None
+    return " and ".join(clauses)
+
+
+def _unwrap_cells(rows: list) -> list[dict]:
+    """Return the ``Cells`` payload of each row when present."""
+    unwrapped: list[dict] = []
+    for row in rows:
+        if isinstance(row, dict) and isinstance(row.get("Cells"), dict):
+            unwrapped.append(row["Cells"])
+        else:
+            unwrapped.append(row)
+    return unwrapped
 
 
 class MosOpenDataApiClient:
@@ -93,15 +149,8 @@ class MosOpenDataApiClient:
         self,
         address: str | None = None,
     ) -> list[dict]:
-        """Fetch hot water shutoff schedule from dataset 801."""
+        """Fetch hot water shutoff schedule from dataset 1401."""
         return await self._fetch_dataset(DATASET_HOT_WATER, address)
-
-    async def async_get_air_quality(
-        self,
-        address: str | None = None,
-    ) -> list[dict]:
-        """Fetch air quality data from dataset 2444."""
-        return await self._fetch_dataset(DATASET_AIR_QUALITY, address)
 
     async def _fetch_dataset(
         self,
@@ -109,7 +158,13 @@ class MosOpenDataApiClient:
         address: str | None = None,
     ) -> list[dict]:
         """Fetch a dataset with optional address filter."""
-        filter_str = _build_filter(address)
+        filter_str = build_address_filter(address)
+        if address and filter_str is None:
+            msg = (
+                "Address contains no searchable tokens; refusing to fetch "
+                "the entire dataset"
+            )
+            raise MosOpenDataApiClientError(msg)
         records: list[dict] = []
         skip = 0
         top = 1000
@@ -155,7 +210,7 @@ class MosOpenDataApiClient:
                 data = await response.json()
 
             rows = data if isinstance(data, list) else data.get("Rows", [])
-            return rows if isinstance(rows, list) else []
+            return _unwrap_cells(rows) if isinstance(rows, list) else []
 
         except TimeoutError as exception:
             msg = f"Timeout fetching Moscow Open Data - {exception}"

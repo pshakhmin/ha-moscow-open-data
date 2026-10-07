@@ -49,11 +49,6 @@ ENTITY_DESCRIPTIONS: tuple[SensorEntityDescription, ...] = (
         name="Окончание отопительного сезона",
         icon="mdi:radiator-off",
     ),
-    SensorEntityDescription(
-        key="air_quality_parameters_count",
-        name="Контролируемых параметров качества воздуха",
-        icon="mdi:air-filter",
-    ),
 )
 
 
@@ -109,9 +104,6 @@ class MosOpenDataSensor(MosOpenDataEntity, SensorEntity):
             return self._get_next_shutoff_start(hot_water)
         if key == "next_water_shutoff_end":
             return self._get_next_shutoff_end(hot_water)
-        if key == "air_quality_parameters_count":
-            air_quality = data.get("air_quality_records", [])
-            return str(len(air_quality))
         return None
 
     def _get_next_shutoff_start(self, records: list[dict]) -> str | None:

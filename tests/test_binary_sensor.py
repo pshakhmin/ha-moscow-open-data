@@ -78,45 +78,6 @@ def test_water_shutoff_unparseable_dates_is_false() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _has_air_quality_exceedance
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    ("cells", "expected"),
-    [
-        ({"PDKmr_ASIL": 1.5}, True),
-        ({"PDKmr_ASIL": 0}, False),
-        ({"PDKmr_ASIL": 0.0}, False),
-        ({"PDKmr_ASIL": None}, False),
-        ({"PDKss": 5}, False),  # PDKmr_ASIL absent
-        ({}, False),
-        ({"PDKmr_ASIL": "1.5"}, False),  # non-numeric values are not trusted
-    ],
-)
-def test_has_air_quality_exceedance(cells: dict, expected: bool) -> None:
-    """PDKmr_ASIL > 0 marks an exceedance; missing/non-positive is fine."""
-    records = [{"Cells": cells}]
-    assert (
-        binary_sensor_module.MosOpenDataBinarySensor._has_air_quality_exceedance(
-            records
-        )
-        is expected
-    )
-
-
-def test_has_air_quality_exceedance_handles_missing_cells() -> None:
-    """Records without Cells, or non-dict records, are skipped safely."""
-    records = [{}, {"Cells": None}, "not-a-dict"]
-    assert (
-        binary_sensor_module.MosOpenDataBinarySensor._has_air_quality_exceedance(
-            records
-        )
-        is False
-    )
-
-
-# ---------------------------------------------------------------------------
 # _is_heating_season (date-only logic, so callable without a coordinator)
 # ---------------------------------------------------------------------------
 

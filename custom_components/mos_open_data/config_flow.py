@@ -11,8 +11,10 @@ from slugify import slugify
 
 from .api import (
     MosOpenDataApiClient,
+    MosOpenDataApiClientAuthenticationError,
     MosOpenDataApiClientCommunicationError,
     MosOpenDataApiClientError,
+    build_address_filter,
 )
 from .const import CONF_ADDRESS, CONF_API_KEY, DOMAIN, LOGGER
 
@@ -30,26 +32,36 @@ class MosOpenDataFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle a flow initialized by the user."""
         _errors = {}
         if user_input is not None:
-            try:
-                await self._test_connection(
-                    address=user_input[CONF_ADDRESS],
-                    api_key=user_input.get(CONF_API_KEY),
-                )
-            except MosOpenDataApiClientCommunicationError as exception:
-                LOGGER.warning(exception)
-                _errors["base"] = "connection"
-            except MosOpenDataApiClientError as exception:
-                LOGGER.exception(exception)
-                _errors["base"] = "unknown"
+            api_key = user_input.get(CONF_API_KEY, "")
+            address = user_input[CONF_ADDRESS]
+            if not api_key or not api_key.strip():
+                _errors["base"] = "missing_api_key"
+            elif build_address_filter(address) is None:
+                _errors["base"] = "invalid_address"
             else:
-                await self.async_set_unique_id(
-                    unique_id=slugify(user_input[CONF_ADDRESS]),
-                )
-                self._abort_if_unique_id_configured()
-                return self.async_create_entry(
-                    title=user_input[CONF_ADDRESS],
-                    data=user_input,
-                )
+                try:
+                    await self._test_connection(
+                        address=address,
+                        api_key=api_key,
+                    )
+                except MosOpenDataApiClientAuthenticationError as exception:
+                    LOGGER.warning(exception)
+                    _errors["base"] = "invalid_auth"
+                except MosOpenDataApiClientCommunicationError as exception:
+                    LOGGER.warning(exception)
+                    _errors["base"] = "connection"
+                except MosOpenDataApiClientError as exception:
+                    LOGGER.exception(exception)
+                    _errors["base"] = "unknown"
+                else:
+                    await self.async_set_unique_id(
+                        unique_id=slugify(address),
+                    )
+                    self._abort_if_unique_id_configured()
+                    return self.async_create_entry(
+                        title=address,
+                        data=user_input,
+                    )
 
         integration = async_get_loaded_integration(self.hass, DOMAIN)
         assert integration.documentation is not None, (  # noqa: S101
@@ -71,12 +83,12 @@ class MosOpenDataFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                             type=selector.TextSelectorType.TEXT,
                         ),
                     ),
-                    vol.Optional(
+                    vol.Required(
                         CONF_API_KEY,
-                        default=(user_input or {}).get(CONF_API_KEY, ""),
+                        default=(user_input or {}).get(CONF_API_KEY, vol.UNDEFINED),
                     ): selector.TextSelector(
                         selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.TEXT,
+                            type=selector.TextSelectorType.PASSWORD,
                         ),
                     ),
                 },
@@ -87,7 +99,7 @@ class MosOpenDataFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     async def _test_connection(
         self,
         address: str,
-        api_key: str | None,
+        api_key: str,
     ) -> None:
         """Validate that we can reach the API."""
         session = async_get_clientsession(self.hass)

@@ -2,15 +2,18 @@
   "config": {
     "step": {
       "user": {
-        "description": "Enter your home address to monitor hot water shutdowns and the heating schedule.",
+        "description": "Enter your home address to monitor hot water shutdowns and the heating schedule. An API key is required; get one in your data.mos.ru personal account (developer section).",
         "data": {
           "address": "Address",
-          "api_key": "API key (optional)"
+          "api_key": "API key"
         }
       }
     },
     "error": {
       "connection": "Failed to connect to the server.",
+      "invalid_address": "Please provide a street and house number.",
+      "invalid_auth": "Invalid API key.",
+      "missing_api_key": "Please provide an API key.",
       "unknown": "An unknown error occurred."
     },
     "abort": {
